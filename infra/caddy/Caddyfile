@@ -1,0 +1,6 @@
+# Caddy reverse proxy (stub, TK-004)
+# api.<domain> -> FastAPI on 127.0.0.1:8000
+
+# api.<domain> {
+#   reverse_proxy 127.0.0.1:8000
+# }

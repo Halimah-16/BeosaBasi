@@ -1,0 +1,8 @@
+# Compose stub (TK-002: local API + MinIO; TK-004: prod shape)
+# services:
+#   api:
+#     build: ../../apps/api
+#     ports: ["8000:8000"]
+#   minio:
+#     image: minio/minio
+#     command: server /data

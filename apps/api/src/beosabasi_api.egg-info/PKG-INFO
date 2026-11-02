@@ -1,0 +1,11 @@
+Metadata-Version: 2.4
+Name: beosabasi-api
+Version: 0.1.0
+Summary: BeosaBasi VPS API (FastAPI + SQLite). Scaffold for TK-020+.
+Requires-Python: ==3.12.*
+Requires-Dist: fastapi<0.117,>=0.115
+Requires-Dist: pydantic<3,>=2.9
+Requires-Dist: uvicorn<0.35,>=0.30
+Provides-Extra: test
+Requires-Dist: pytest<9,>=8; extra == "test"
+Requires-Dist: ruff>=0.8; extra == "test"

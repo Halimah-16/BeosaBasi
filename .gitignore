@@ -1,0 +1,39 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.db
+*.sqlite*
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+coverage/
+
+# Secrets & env
+.env
+.env.local
+*.pem
+*.key
+
+# Audio / data (never commit user audio or eval voice data)
+eval/data/
+*.wav
+*.mp3
+*.m4a
+*.flac
+*.ogg
+*.opus
+*.mp4
+*.webm
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,0 +1,10 @@
+pyproject.toml
+src/beosabasi_worker.egg-info/PKG-INFO
+src/beosabasi_worker.egg-info/SOURCES.txt
+src/beosabasi_worker.egg-info/dependency_links.txt
+src/beosabasi_worker.egg-info/entry_points.txt
+src/beosabasi_worker.egg-info/requires.txt
+src/beosabasi_worker.egg-info/top_level.txt
+src/worker/__init__.py
+src/worker/cli.py
+tests/test_cli.py

@@ -1,0 +1,15 @@
+NOTICE — Model and component attributions (R-12)
+
+This project uses the following third-party models/components. Check and
+follow their licenses before downloading or deploying models.
+
+- OpenAI Whisper (model family; this project targets large-v3-turbo).
+  Reference implementation: https://github.com/openai/whisper
+- faster-whisper / CTranslate2 inference runtime.
+  https://github.com/SYSTRAN/faster-whisper
+- pyannote speaker-diarization-community-1 (Community-1), licensed CC-BY-4.0.
+  Gated model: accept the model terms on Hugging Face and attribute use per
+  CC-BY-4.0 (see the in-app attribution page, TK-041). Model weights are NOT
+  stored in this repository.
+
+No user audio, transcripts, or model weights are committed to this repo.

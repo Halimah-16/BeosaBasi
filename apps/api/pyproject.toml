@@ -1,0 +1,29 @@
+[project]
+name = "beosabasi-api"
+version = "0.1.0"
+description = "BeosaBasi VPS API (FastAPI + SQLite). Scaffold for TK-020+."
+requires-python = "==3.12.*"
+dependencies = [
+  "fastapi>=0.115,<0.117",
+  "pydantic>=2.9,<3",
+  "uvicorn>=0.30,<0.35",
+]
+
+[project.optional-dependencies]
+# 'test' extra bundles test + lint tooling so `uv sync --extra test`
+# (or `pip install -e .[test]`) is enough for `make lint` and `make test`.
+test = ["pytest>=8,<9", "ruff>=0.8"]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
