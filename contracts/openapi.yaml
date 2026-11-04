@@ -3,23 +3,1016 @@ info:
   title: BeosaBasi API
   version: 0.1.0
   description: >-
-    Placeholder contract (TK-000). Full endpoint schemas for PRD 4.7
-    (user auth, consents, multipart uploads, jobs, transcript, export,
-    worker claim/heartbeat/result/fail) will be written in TK-001.
+    Kontrak API BeosaBasi (TK-001, merujuk PRD 4.7). Mencakup endpoint pengguna
+    (sesi cookie) dan endpoint pekerja (token bearer, hanya koneksi keluar dari
+    laptop). Perubahan kontrak wajib lewat PR yang menandai jalur terdampak
+    (API, WRK, WEB).
+servers:
+  - url: https://api.{domain}
+    description: VPS production (di belakang proksi Cloudflare)
+    variables:
+      domain:
+        default: example.id
+  - url: http://localhost:8000
+    description: Pengembangan lokal (TK-002, MinIO sebagai R2)
+security:
+  - cookieAuth: []
 paths:
   /healthz:
     get:
-      summary: Health check
+      summary: Health check (tanpa autentikasi, untuk pemantau waktu aktif)
       operationId: healthz
+      security: []
       responses:
         "200":
           description: Service is up
           content:
             application/json:
               schema:
-                type: object
-                required: [status]
-                properties:
-                  status:
-                    type: string
-                    example: ok
+                $ref: "#/components/schemas/Health"
+  /auth/google/login:
+    get:
+      summary: Mulai login Google OIDC (redirect ke Google)
+      operationId: authGoogleLogin
+      security: []
+      responses:
+        "302":
+          description: Redirect ke halaman persetujuan Google
+  /auth/google/callback:
+    get:
+      summary: Callback Google OIDC (menetapkan cookie sesi bila email di allowlist)
+      operationId: authGoogleCallback
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/OAuthCode"
+        - $ref: "#/components/parameters/OAuthState"
+      responses:
+        "302":
+          description: Kembali ke app dengan cookie sesi, atau ke halaman ditolak
+        "403":
+          description: Email di luar allowlist (D-04)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /auth/logout:
+    post:
+      summary: Keluar (mencabut sesi)
+      operationId: authLogout
+      responses:
+        "204":
+          description: Sesi dicabut
+  /api/me:
+    get:
+      summary: Profil, sisa kuota, dan status persetujuan
+      operationId: getMe
+      responses:
+        "200":
+          description: Profil pengguna
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Me"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    delete:
+      summary: Hapus seluruh akun (US-05)
+      operationId: deleteMe
+      responses:
+        "202":
+          description: Penghapusan dijadwalkan (audio, segmen, sesi)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Accepted"
+  /api/consents:
+    post:
+      summary: Memberi persetujuan eksplisit (US-06, versi dokumen dicatat)
+      operationId: giveConsent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConsentGive"
+      responses:
+        "201":
+          description: Persetujuan tercatat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Consent"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+    delete:
+      summary: Menarik persetujuan (penghapusan ≤ 3x24 jam)
+      operationId: withdrawConsent
+      responses:
+        "202":
+          description: Penarikan dicatat, penghapusan dijadwalkan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Accepted"
+  /api/uploads:
+    post:
+      summary: Inisiasi unggah multipart ke R2 (US-01, US-07)
+      description: >-
+        Memeriksa persetujuan, kuota, job aktif, dan plafon global 8 GB.
+        Mengembalikan job_id + upload_id + jumlah potongan (8 MiB).
+      operationId: initUpload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UploadInit"
+      responses:
+        "201":
+          description: Sesi unggah dibuat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadSession"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          description: Persetujuan belum diberikan atau kuota habis
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/uploads/{id}/parts:
+    post:
+      summary: Minta URL bertanda tangan untuk satu potongan (TTL 15 menit)
+      operationId: signPart
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PartSignRequest"
+      responses:
+        "200":
+          description: URL PUT potongan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartSignResponse"
+  /api/uploads/{id}:
+    get:
+      summary: Daftar potongan yang sudah ada (pelanjutan unggah, ListParts)
+      operationId: listUploadedParts
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "200":
+          description: Status unggah
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadStatus"
+  /api/uploads/{id}/complete:
+    post:
+      summary: Selesaikan multipart (pemeriksaan ringan ≤ 5 dtk → queued)
+      operationId: completeUpload
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UploadComplete"
+      responses:
+        "200":
+          description: Job masuk antrean
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+  /api/jobs:
+    get:
+      summary: Daftar job milik pengguna
+      operationId: listJobs
+      parameters:
+        - $ref: "#/components/parameters/StatusFilter"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: Daftar job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobList"
+  /api/jobs/{id}:
+    get:
+      summary: Status job + posisi antrean + perkiraan waktu (US-02)
+      operationId: getJob
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "200":
+          description: Status job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      summary: Hapus job (US-05, audio + transkrip ≤ 24 jam)
+      operationId: deleteJob
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "202":
+          description: Penghapusan dijadwalkan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Accepted"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/jobs/{id}/transcript:
+    get:
+      summary: Segmen transkrip + pembicara
+      operationId: getTranscript
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "200":
+          description: Transkrip
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transcript"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/jobs/{id}/segments/{n}:
+    patch:
+      summary: Sunting teks / pindahkan pembicara satu segmen (US-03, US-08)
+      description: Membawa `version` untuk deteksi tabrakan. Tidak mengubah penanda waktu.
+      operationId: patchSegment
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+        - name: n
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SegmentPatch"
+      responses:
+        "200":
+          description: Segmen terbaru
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Segment"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Tabrakan versi (sunting di tempat lain lebih dulu)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/jobs/{id}/speakers/{sid}:
+    patch:
+      summary: Ganti nama pembicara (berlaku untuk semua segmen berlabel itu)
+      operationId: renameSpeaker
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+        - name: sid
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SpeakerRename"
+      responses:
+        "200":
+          description: Pembicara terbaru
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Speaker"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/jobs/{id}/audio-url:
+    get:
+      summary: URL bertanda tangan sementara untuk pemutar (TTL 15 menit)
+      description: 404 bila audio sudah terhapus (retensi ≤ 24 jam, D-07).
+      operationId: getAudioUrl
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "200":
+          description: URL pemutar
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AudioUrl"
+        "404":
+          description: Audio sudah terhapus sesuai retensi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/jobs/{id}/export:
+    get:
+      summary: Ekspor transkrip (US-04, mencerminkan suntingan terbaru)
+      operationId: exportTranscript
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+        - name: format
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [txt, srt, vtt, docx]
+      responses:
+        "200":
+          description: Berkas ekspor
+          content:
+            text/plain:
+              schema:
+                type: string
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+  /worker/v1/jobs/claim:
+    post:
+      summary: Pekerja mengambil job berikutnya (long-poll ≤ 25 dtk, sewa 5 mnt)
+      operationId: workerClaim
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: wait
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 25
+            default: 25
+      responses:
+        "200":
+          description: Job untuk diproses (URL GET R2 bertanda tangan, TTL 15 mnt)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClaimResponse"
+        "204":
+          description: Antrean kosong setelah long-poll
+        "401":
+          $ref: "#/components/responses/UnauthorizedWorker"
+  /worker/v1/jobs/{id}/heartbeat:
+    post:
+      summary: Detak tiap 30 dtk (perpanjang sewa, lapor tahap, terima sinyal cancel)
+      operationId: workerHeartbeat
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Heartbeat"
+      responses:
+        "200":
+          description: Sewa diperpanjang
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HeartbeatResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Sewa hilang (job diambil alih / dibatalkan pengguna)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /worker/v1/jobs/{id}/result:
+    post:
+      summary: Kirim hasil transkripsi + diarisasi (AI-06)
+      operationId: workerResult
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkerResult"
+      responses:
+        "200":
+          description: Hasil diterima, job completed (atau tanpa label bila diarisasi gagal)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ack"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /worker/v1/jobs/{id}/fail:
+    post:
+      summary: Laporkan kegagalan (maksimal 3 percobaan, lalu failed)
+      operationId: workerFail
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkerFail"
+      responses:
+        "200":
+          description: Laporan diterima
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ack"
+  /worker/v1/ping:
+    post:
+      summary: Pendaftaran pekerja + pemeriksaan versi minimum
+      operationId: workerPing
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkerPing"
+      responses:
+        "200":
+          description: Status versi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkerPingResponse"
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: beosabasi_session
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Token pekerja acak 256-bit (hanya hash yang disimpan di VPS)
+  parameters:
+    JobId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    OAuthCode:
+      name: code
+      in: query
+      required: true
+      schema:
+        type: string
+    OAuthState:
+      name: state
+      in: query
+      required: true
+      schema:
+        type: string
+    StatusFilter:
+      name: status
+      in: query
+      required: false
+      schema:
+        $ref: "#/components/schemas/JobState"
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 50
+        default: 20
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      schema:
+        type: string
+  responses:
+    Unauthorized:
+      description: Tanpa sesi (login dulu)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    UnauthorizedWorker:
+      description: Token pekerja salah / kedaluwarsa
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    BadRequest:
+      description: Badan permintaan tidak valid
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Tidak ditemukan (atau milik pengguna lain)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+  schemas:
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          example: ok
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          $ref: "#/components/schemas/KodeGalat"
+        message:
+          type: string
+          description: Pesan manusiawi Bahasa Indonesia
+    Accepted:
+      type: object
+      required: [scheduled]
+      properties:
+        scheduled:
+          type: boolean
+          example: true
+        purge_at:
+          type: string
+          format: date-time
+          description: Batas waktu penghapusan terjadwal
+    Ack:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+          example: true
+    JobState:
+      type: string
+      enum: [uploading, queued, processing, completed, failed, expired, cancelled, deleted]
+    ProcessingStage:
+      type: string
+      enum: [probing, transcribing, diarizing, merging]
+    KodeGalat:
+      type: string
+      description: Daftar kode galat + pesan manusiawi ada di contracts/worker-protocol.md
+      enum:
+        - INVALID_FILE
+        - UNSUPPORTED_TYPE
+        - TOO_LARGE
+        - TOO_LONG
+        - NO_AUDIO_STREAM
+        - CORRUPT_MEDIA
+        - QUOTA_EXCEEDED
+        - TOO_MANY_ACTIVE_JOBS
+        - CONSENT_REQUIRED
+        - ALLOWLIST_REQUIRED
+        - WORKER_OFFLINE
+        - LEASE_LOST
+        - GPU_OOM
+        - DIARIZATION_FAILED
+        - FFMPEG_ERROR
+        - JOB_TIMEOUT
+        - JOB_EXPIRED
+        - VERSION_CONFLICT
+        - AUDIO_GONE
+        - INTERNAL
+    Me:
+      type: object
+      required: [user_id, email, quota_minutes_remaining, active_jobs, consent]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        quota_minutes_remaining:
+          type: number
+        active_jobs:
+          type: integer
+        consent:
+          anyOf:
+            - $ref: "#/components/schemas/Consent"
+            - type: "null"
+    ConsentGive:
+      type: object
+      required: [document_version, age_confirmed]
+      properties:
+        document_version:
+          type: string
+          example: "privasi-2026-11-v1"
+        age_confirmed:
+          type: boolean
+          description: Deklarasi berusia ≥ 18 tahun (D-05)
+    Consent:
+      type: object
+      required: [document_version, given_at]
+      properties:
+        document_version:
+          type: string
+        given_at:
+          type: string
+          format: date-time
+        withdrawn_at:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: "null"
+    UploadInit:
+      type: object
+      required: [filename, size_bytes, content_type, language, turnstile_token]
+      properties:
+        filename:
+          type: string
+        size_bytes:
+          type: integer
+          maximum: 209715200
+          description: Batas 200 MB (US-01)
+        content_type:
+          type: string
+          example: audio/mpeg
+        language:
+          type: string
+          enum: [id, en, auto]
+          default: id
+        diarization:
+          type: boolean
+          default: false
+          description: US-08, dihitung 2x kuota
+        min_speakers:
+          type: integer
+          minimum: 1
+          maximum: 8
+        max_speakers:
+          type: integer
+          minimum: 1
+          maximum: 8
+        turnstile_token:
+          type: string
+    UploadSession:
+      type: object
+      required: [job_id, upload_id, part_size, part_count]
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        upload_id:
+          type: string
+        part_size:
+          type: integer
+          example: 8388608
+        part_count:
+          type: integer
+    PartSignRequest:
+      type: object
+      required: [part_number]
+      properties:
+        part_number:
+          type: integer
+          minimum: 1
+          maximum: 10000
+    PartSignResponse:
+      type: object
+      required: [url, expires_at]
+      properties:
+        url:
+          type: string
+          format: uri
+        expires_at:
+          type: string
+          format: date-time
+    UploadStatus:
+      type: object
+      required: [job_id, state, parts_done, parts_total]
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        state:
+          $ref: "#/components/schemas/JobState"
+        parts_done:
+          type: array
+          items:
+            type: integer
+        parts_total:
+          type: integer
+    UploadComplete:
+      type: object
+      required: [parts]
+      properties:
+        parts:
+          type: array
+          items:
+            $ref: "#/components/schemas/CompletedPart"
+    CompletedPart:
+      type: object
+      required: [part_number, etag]
+      properties:
+        part_number:
+          type: integer
+          minimum: 1
+        etag:
+          type: string
+    Job:
+      type: object
+      required: [job_id, state, filename, size_bytes, language, diarization, created_at]
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        state:
+          $ref: "#/components/schemas/JobState"
+        stage:
+          anyOf:
+            - $ref: "#/components/schemas/ProcessingStage"
+            - type: "null"
+        filename:
+          type: string
+        size_bytes:
+          type: integer
+        duration_seconds:
+          anyOf:
+            - type: number
+            - type: "null"
+        language:
+          type: string
+        diarization:
+          type: boolean
+        billed_minutes:
+          type: number
+        attempts:
+          type: integer
+        error_code:
+          anyOf:
+            - $ref: "#/components/schemas/KodeGalat"
+            - type: "null"
+        created_at:
+          type: string
+          format: date-time
+        finished_at:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: "null"
+    JobSummary:
+      allOf:
+        - $ref: "#/components/schemas/Job"
+    JobList:
+      type: object
+      required: [jobs]
+      properties:
+        jobs:
+          type: array
+          items:
+            $ref: "#/components/schemas/JobSummary"
+        next_cursor:
+          anyOf:
+            - type: string
+            - type: "null"
+    JobDetail:
+      type: object
+      required: [job, worker_active]
+      properties:
+        job:
+          $ref: "#/components/schemas/Job"
+        queue_position:
+          anyOf:
+            - type: integer
+            - type: "null"
+        eta_seconds:
+          anyOf:
+            - type: number
+            - type: "null"
+        worker_active:
+          type: boolean
+    Segment:
+      type: object
+      required: [index, start, end, text, confidence, version]
+      properties:
+        index:
+          type: integer
+          minimum: 0
+        start:
+          type: number
+          description: Detik
+        end:
+          type: number
+          description: Detik
+        text:
+          type: string
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        speaker_id:
+          anyOf:
+            - type: string
+            - type: "null"
+        edited:
+          type: boolean
+          default: false
+        version:
+          type: integer
+          description: Naik tiap suntingan (deteksi tabrakan)
+    Speaker:
+      type: object
+      required: [speaker_id, label, display_name]
+      properties:
+        speaker_id:
+          type: string
+        label:
+          type: string
+          example: Pembicara 1
+        display_name:
+          type: string
+          example: Dina
+    Transcript:
+      type: object
+      required: [job_id, segments, speakers]
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        segments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Segment"
+        speakers:
+          type: array
+          items:
+            $ref: "#/components/schemas/Speaker"
+    SegmentPatch:
+      type: object
+      required: [version]
+      properties:
+        text:
+          type: string
+        speaker_id:
+          anyOf:
+            - type: string
+            - type: "null"
+        version:
+          type: integer
+    SpeakerRename:
+      type: object
+      required: [display_name]
+      properties:
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 60
+    AudioUrl:
+      type: object
+      required: [url, expires_at]
+      properties:
+        url:
+          type: string
+          format: uri
+        expires_at:
+          type: string
+          format: date-time
+    ClaimResponse:
+      type: object
+      required: [job_id, audio_url, audio_expires_at, language, diarization, lease_until]
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        audio_url:
+          type: string
+          format: uri
+          description: URL GET R2 bertanda tangan (TTL 15 menit)
+        audio_expires_at:
+          type: string
+          format: date-time
+        language:
+          type: string
+        diarization:
+          type: boolean
+        min_speakers:
+          anyOf:
+            - type: integer
+            - type: "null"
+        max_speakers:
+          anyOf:
+            - type: integer
+            - type: "null"
+        lease_until:
+          type: string
+          format: date-time
+    Heartbeat:
+      type: object
+      required: [stage]
+      properties:
+        stage:
+          $ref: "#/components/schemas/ProcessingStage"
+        progress_percent:
+          type: number
+          minimum: 0
+          maximum: 100
+    HeartbeatResponse:
+      type: object
+      required: [cancel, lease_until]
+      properties:
+        cancel:
+          type: boolean
+          description: True bila pengguna menghapus job — pekerja wajib berhenti dan hapus berkas kerja
+        lease_until:
+          type: string
+          format: date-time
+    WorkerResult:
+      type: object
+      required: [segments, duration_seconds, xrt, model_version, low_confidence_ratio]
+      properties:
+        segments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Segment"
+        speakers:
+          type: array
+          items:
+            $ref: "#/components/schemas/Speaker"
+          description: Kosong bila diarisasi mati atau gagal (AI-13)
+        diarization_available:
+          type: boolean
+          default: false
+        duration_seconds:
+          type: number
+        xrt:
+          type: number
+          description: Kecepatan relatif (durasi audio / waktu proses)
+        model_version:
+          type: string
+          example: whisper-large-v3-turbo-ct2-int8
+        low_confidence_ratio:
+          type: number
+          minimum: 0
+          maximum: 1
+    WorkerFail:
+      type: object
+      required: [code, retryable]
+      properties:
+        code:
+          $ref: "#/components/schemas/KodeGalat"
+        retryable:
+          type: boolean
+        detail:
+          type: string
+          description: Tanpa nama berkas / teks transkrip (AI-10)
+    WorkerPing:
+      type: object
+      required: [worker_id, version]
+      properties:
+        worker_id:
+          type: string
+        version:
+          type: string
+          example: 0.1.0
+    WorkerPingResponse:
+      type: object
+      required: [ok, min_version, update_required]
+      properties:
+        ok:
+          type: boolean
+        min_version:
+          type: string
+        update_required:
+          type: boolean

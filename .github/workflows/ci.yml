@@ -5,6 +5,18 @@ on:
   pull_request:
 
 jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate contract and regenerate clients
+        run: python scripts/gen_client.py
+      - name: Generated clients in sync
+        run: git diff --exit-code -- contracts/openapi.yaml apps/web/src/api-types.ts apps/api/src/api/schemas.py apps/worker/src/worker/schemas.py
+
   api:
     runs-on: ubuntu-latest
     steps:

@@ -1,0 +1,46 @@
+{
+  "job": {
+    "job_id": "00000000-0000-4000-8000-000000000001",
+    "state": "completed",
+    "stage": null,
+    "filename": "wawancara-contoh.m4a",
+    "size_bytes": 1234567,
+    "duration_seconds": 60.0,
+    "language": "id",
+    "diarization": true,
+    "billed_minutes": 2.0,
+    "attempts": 1,
+    "error_code": null,
+    "created_at": "2026-11-02T08:00:00+07:00",
+    "finished_at": "2026-11-02T08:01:00+07:00"
+  },
+  "transcript": {
+    "job_id": "00000000-0000-4000-8000-000000000001",
+    "segments": [
+      {
+        "index": 0,
+        "start": 0.0,
+        "end": 4.2,
+        "text": "selamat pagi, terima kasih sudah bersedia diwawancarai",
+        "confidence": 0.93,
+        "speaker_id": "spk1",
+        "edited": false,
+        "version": 1
+      },
+      {
+        "index": 1,
+        "start": 4.2,
+        "end": 9.8,
+        "text": "selamat pagi juga, dengan senang hati",
+        "confidence": 0.91,
+        "speaker_id": "spk2",
+        "edited": false,
+        "version": 1
+      }
+    ],
+    "speakers": [
+      {"speaker_id": "spk1", "label": "Pembicara 1", "display_name": "Dina"},
+      {"speaker_id": "spk2", "label": "Pembicara 2", "display_name": "Narasumber"}
+    ]
+  }
+}

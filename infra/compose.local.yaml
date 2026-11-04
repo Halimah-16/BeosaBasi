@@ -1,0 +1,34 @@
+# Local development stack (TK-002). Dev-only: fake API + Garage as the
+# S3-compatible R2 stand-in (Garage supports multipart upload like R2).
+# Production shape (Caddy, backups, real R2, real secrets) arrives in TK-004.
+# All credentials below are local-dev only and never used in production.
+name: beosabasi-local
+
+services:
+  api:
+    build:
+      context: ../apps/api
+      dockerfile: Dockerfile
+    environment:
+      BEOSABASI_FAKE: "1"
+    ports:
+      - "8000:8000"
+    volumes:
+      - api-data:/data
+    depends_on:
+      s3:
+        condition: service_started
+
+  s3:
+    image: dxflrs/garage:v2.3.0
+    command: ["/garage", "-c", "/etc/garage.toml", "server"]
+    ports:
+      - "3900:3900"
+      - "3903:3903"
+    volumes:
+      - ./garage.toml:/etc/garage.toml:ro
+      - s3-data:/var/lib/garage
+
+volumes:
+  api-data:
+  s3-data:

@@ -1,0 +1,28 @@
+# Garage single-node config, LOCAL DEV ONLY (TK-002).
+# Never use these credentials outside the laptop. R2 stays the production store.
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+db_engine = "sqlite"
+replication_factor = 1
+consistency_mode = "consistent"
+
+rpc_bind_addr = "[::]:3901"
+rpc_public_addr = "127.0.0.1:3901"
+rpc_secret = "7efe3bff412b8799aff1942927a3c8bd86506818ccaa674266b164ad6dcb7643"
+
+[s3_api]
+s3_region = "garage"
+api_bind_addr = "[::]:3900"
+root_domain = ".s3.garage.localhost"
+
+[s3_web]
+bind_addr = "[::]:3902"
+root_domain = ".web.garage.localhost"
+
+[k2v_api]
+api_bind_addr = "[::]:3904"
+
+[admin]
+api_bind_addr = "[::]:3903"
+admin_token = "dev-admin-token-beosabasi"
+metrics_token = "dev-metrics-token-beosabasi"
