@@ -126,3 +126,42 @@ export async function runChunks(options: RunOptions): Promise<RunSummary> {
   summary.cancelled = signal.aborted;
   return summary;
 }
+
+export interface LanguageRunOptions extends Omit<RunOptions, "send"> {
+  language: string;
+  locked: string | null;
+  onLock: (language: string) => void;
+  send: (index: number, signal: AbortSignal, language: string) => Promise<ChunkResult>;
+}
+
+/**
+ * Pada deteksi otomatis, bagian pertama menentukan bahasa untuk seluruh rekaman.
+ * Tanpa ini tiap potongan menebak sendiri dan satu rekaman bisa terbaca banyak bahasa.
+ */
+export async function runWithLanguage(options: LanguageRunOptions): Promise<RunSummary> {
+  const { indexes, send, onLock } = options;
+  const active = options.locked ?? options.language;
+  if (active !== "auto" || indexes.length < 2) {
+    return runChunks({ ...options, send: (index, signal) => send(index, signal, active) });
+  }
+
+  const found: { language: string | null } = { language: null };
+  const first = await runChunks({
+    ...options,
+    indexes: indexes.slice(0, 1),
+    send: async (index, signal) => {
+      const result = await send(index, signal, "auto");
+      found.language = result.language;
+      return result;
+    },
+  });
+  if (first.quotaExhausted || first.cancelled) return first;
+
+  const locked = found.language ?? "auto";
+  if (found.language) onLock(found.language);
+  return runChunks({
+    ...options,
+    indexes: indexes.slice(1),
+    send: (index, signal) => send(index, signal, locked),
+  });
+}

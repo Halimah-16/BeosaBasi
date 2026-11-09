@@ -10,6 +10,22 @@ const MODEL = "@cf/openai/whisper-large-v3-turbo";
 const MAX_BODY_CHARS = 6 * 1024 * 1024;
 const WAV_BASE64_PREFIX = "UklGR"; // "RIFF" dalam base64
 
+/**
+ * Model lebih kuat di bahasa Indonesia daripada Jawa, jadi rekaman campuran
+ * ditranskrip sebagai Indonesia dengan contoh kosakata Jawa sebagai petunjuk.
+ */
+const PRESETS = new Map([
+  [
+    "jw-id",
+    {
+      language: "id",
+      prompt:
+        "Obrolan campuran bahasa Jawa dan bahasa Indonesia. Aku ora ngerti, kowe arep nang ndi? " +
+        "Piye kabare, Mas? Wis mangan durung? Iya, sampun. Sakjane aku yo pengen, tapi rung iso. Matur nuwun, Mbak.",
+    },
+  ],
+]);
+
 interface WhisperSegment {
   start?: number;
   end?: number;
@@ -54,7 +70,8 @@ export async function handleTranscribe(request: Request, env: TranscribeEnv): Pr
   }
 
   const language = new URL(request.url).searchParams.get("language") ?? "auto";
-  if (language !== "auto" && !/^[a-z]{2,3}$/.test(language)) {
+  const preset = PRESETS.get(language);
+  if (language !== "auto" && !preset && !/^[a-z]{2,3}$/.test(language)) {
     return fail(400, "bad_language", "Kode bahasa tidak dikenali.");
   }
 
@@ -75,7 +92,12 @@ export async function handleTranscribe(request: Request, env: TranscribeEnv): Pr
     vad_filter: true,
     condition_on_previous_text: false,
   };
-  if (language !== "auto") input.language = language;
+  if (preset) {
+    input.language = preset.language;
+    input.initial_prompt = preset.prompt;
+  } else if (language !== "auto") {
+    input.language = language;
+  }
 
   let output: WhisperOutput;
   try {

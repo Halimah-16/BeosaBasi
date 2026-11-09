@@ -10,7 +10,7 @@ import {
   type ChunkRange,
 } from "./audio";
 import { formatClock, toDocx, toSrt, toTxt, toVtt, type Segment } from "./formats";
-import { postChunk, runChunks, type ChunkResult, type ChunkStatus } from "./transcribe";
+import { postChunk, runWithLanguage, type ChunkResult, type ChunkStatus } from "./transcribe";
 
 const MAX_FILE_BYTES = 200 * 1024 * 1024;
 const MAX_SECONDS = 120 * 60;
@@ -20,6 +20,7 @@ const LANGUAGES: { code: string; label: string }[] = [
   { code: "auto", label: "Deteksi otomatis" },
   { code: "id", label: "Indonesia" },
   { code: "en", label: "Inggris" },
+  { code: "jw-id", label: "Campuran Jawa dan Indonesia" },
   { code: "jw", label: "Jawa" },
   { code: "su", label: "Sunda" },
   { code: "ms", label: "Melayu" },
@@ -115,6 +116,7 @@ export default function App(): React.JSX.Element {
   const [copied, setCopied] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const lockedLanguageRef = useRef<string | null>(null);
 
   const ordered = useMemo(
     () =>
@@ -144,6 +146,7 @@ export default function App(): React.JSX.Element {
     setResults({});
     setStatuses([]);
     setAudio(null);
+    lockedLanguageRef.current = null;
     if (file.size > MAX_FILE_BYTES) {
       setError("Berkas lebih dari 200 MB. Pilih berkas yang lebih kecil atau potong dulu rekamannya.");
       setPhase("empty");
@@ -180,15 +183,20 @@ export default function App(): React.JSX.Element {
     const controller = new AbortController();
     abortRef.current = controller;
 
-    const summary = await runChunks({
+    const summary = await runWithLanguage({
       indexes,
       signal: controller.signal,
-      send: (index, signal) => {
+      language,
+      locked: lockedLanguageRef.current,
+      onLock: (code) => {
+        lockedLanguageRef.current = code;
+      },
+      send: (index, signal, activeLanguage) => {
         const range = audio.ranges[index];
         const wav = encodeWav(audio.samples.subarray(range.start, range.end));
         return postChunk({
           base64: bytesToBase64(wav),
-          language,
+          language: activeLanguage,
           offsetSeconds: range.start / SAMPLE_RATE,
           signal,
         });
@@ -354,7 +362,7 @@ export default function App(): React.JSX.Element {
             <div className="sheet-head">
               <div>
                 <h2>Transkrip</h2>
-                {detected && <p className="detected">Bahasa terdeteksi: {detected}</p>}
+                {language === "auto" && detected && <p className="detected">Bahasa terdeteksi: {detected}</p>}
               </div>
               <div className="exports" aria-label="Simpan transkrip">
                 <button type="button" onClick={() => void copyText()}>

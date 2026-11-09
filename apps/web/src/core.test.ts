@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { bytesToBase64, computePeaks, encodeWav, isSilent, planChunks } from "./audio";
 import { formatClock, toSrt, toTxt, toVtt, type Segment } from "./formats";
-import { postChunk, QuotaError, runChunks, type ChunkStatus } from "./transcribe";
+import { handleTranscribe } from "../functions/api/transcribe";
+import { postChunk, QuotaError, runChunks, runWithLanguage, type ChunkStatus } from "./transcribe";
 
 const segments: Segment[] = [
   { start: 0, end: 2.5, text: " Halo dunia " },
@@ -137,5 +138,80 @@ describe("pengiriman", () => {
       },
     });
     expect(statuses).toEqual({ 0: "failed", 1: "done" });
+  });
+});
+
+describe("penguncian bahasa", () => {
+  it("bagian pertama menentukan bahasa bagian lain", async () => {
+    const used: string[] = [];
+    const locks: string[] = [];
+    await runWithLanguage({
+      indexes: [0, 1, 2],
+      concurrency: 1,
+      signal,
+      language: "auto",
+      locked: null,
+      onLock: (code) => locks.push(code),
+      onStatus: () => undefined,
+      send: async (_index, _signal, language) => {
+        used.push(language);
+        return { language: used.length === 1 ? "id" : "es", segments: [] };
+      },
+    });
+    expect(used).toEqual(["auto", "id", "id"]);
+    expect(locks).toEqual(["id"]);
+  });
+
+  it("pilihan manual tidak dideteksi ulang", async () => {
+    const used: string[] = [];
+    await runWithLanguage({
+      indexes: [0, 1],
+      concurrency: 1,
+      signal,
+      language: "jw-id",
+      locked: null,
+      onLock: () => undefined,
+      onStatus: () => undefined,
+      send: async (_index, _signal, language) => {
+        used.push(language);
+        return { language: "id", segments: [] };
+      },
+    });
+    expect(used).toEqual(["jw-id", "jw-id"]);
+  });
+});
+
+describe("API", () => {
+  const post = async (language: string): Promise<{ status: number; input: Record<string, unknown> }> => {
+    let input: Record<string, unknown> = {};
+    const response = await handleTranscribe(
+      new Request(`https://x.test/api/transcribe?language=${language}`, { method: "POST", body: "UklGRabc" }),
+      {
+        AI: {
+          run: async (_model, received) => {
+            input = received;
+            return { text: "a", segments: [] };
+          },
+        },
+      },
+    );
+    return { status: response.status, input };
+  };
+
+  it("campuran Jawa memakai bahasa Indonesia dan petunjuk kosakata", async () => {
+    const { status, input } = await post("jw-id");
+    expect(status).toBe(200);
+    expect(input.language).toBe("id");
+    expect(typeof input.initial_prompt).toBe("string");
+  });
+
+  it("deteksi otomatis tidak mengirim bahasa", async () => {
+    const { input } = await post("auto");
+    expect(input.language).toBe(undefined);
+  });
+
+  it("menolak kode bahasa aneh", async () => {
+    const { status } = await post("x;y");
+    expect(status).toBe(400);
   });
 });
