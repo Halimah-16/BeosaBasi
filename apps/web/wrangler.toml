@@ -1,0 +1,7 @@
+# Konfigurasi Cloudflare Pages. File ini menjadi sumber kebenaran untuk binding.
+name = "beosabasi"
+pages_build_output_dir = "./dist"
+compatibility_date = "2026-10-01"
+
+[ai]
+binding = "AI"

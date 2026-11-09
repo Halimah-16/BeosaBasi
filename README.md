@@ -6,8 +6,9 @@ diekspor. Inferensi memakai Whisper large-v3-turbo di laptop pengelola
 (RTX 4050); web statis di Cloudflare Pages; API + antrean di VPS; audio
 sementara di Cloudflare R2. Lihat `docs/PRD.md` (v1.0) dan `docs/TICKETS.md`.
 
-> Status: scaffold repositori (TK-000). Endpoint, pekerja, dan benchmark nyata
-> dikerjakan di tiket berikutnya.
+> Status: versi yang berjalan sekarang memakai Cloudflare Pages + Workers AI
+> (`apps/web`, lihat `docs/ADR/001-transkripsi-workers-ai.md`). Arsitektur laptop
+> + VPS + R2 di bawah adalah rancangan PRD dan belum dibangun.
 
 ## Arsitektur (PRD 4.1)
 
